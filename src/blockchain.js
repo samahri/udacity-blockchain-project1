@@ -64,22 +64,23 @@ class Blockchain {
     _addBlock(block) {
         let self = this;
         return new Promise(async (resolve, reject) => {
-            this.height++;
-            block.height = this.height;
-            block.time = new Date().getTime().toString().slice(0, -3);
-            if (this.height > 0) {
-                block.previousBlockHash = this.chain[this.chain.length - 1].hash;
-            }
+            this.validateChain().then(() => {
+                this.height++;
+                block.height = this.height;
+                block.time = new Date().getTime().toString().slice(0, -3);
+                if (this.height > 0) {
+                    block.previousBlockHash = this.chain[this.chain.length - 1].hash;
+                }
 
-            block.hash = SHA256(JSON.stringify(block)).toString();
+                block.hash = SHA256(JSON.stringify(block)).toString();
 
-            block.validate().then((result) => {
-                console.log(this.height);
-                this.chain.push(result);
-                resolve(result);
-            }).catch((error) => {
-                this.height--;
-                reject(`Error adding block: ${error}`);
+                block.validate().then((result) => {
+                    this.chain.push(result);
+                    resolve(result);
+                }).catch((error) => {
+                    this.height--;
+                    reject(`Error adding block: ${error}`);
+                });
             });
         });
     }
@@ -124,18 +125,15 @@ class Blockchain {
 
             if (currentTime - timestamp > 300) {
                 reject("more than 5 minutes have elapsed");
-            }
-
-            if (!bitcoinMessage.verify(message, address, signature)) {
+            } else if (!bitcoinMessage.verify(message, address, signature)) {
                 reject("invalid signature");
+            } else {
+                let block = new BlockClass.Block({ "data": { "star": star, "owner": message.split(':')[0] } });
+                this._addBlock(block).then((result) => {
+                    resolve(result);
+                })
+                    .catch((error) => reject(error));
             }
-
-            let block = new BlockClass.Block({ "data": { "star": star, "owner": message.split(':')[0] } });
-            this._addBlock(block).then((result) => {
-                resolve(result);
-            })
-                .catch((error) => reject(error));
-
         });
     }
 
@@ -148,9 +146,9 @@ class Blockchain {
     getBlockByHash(hash) {
         let self = this;
         return new Promise((resolve, reject) => {
-            const result = this.chain.filter(block => block.hash === hash);
-            if (result.length === 1) {
-                resolve(result[0]);
+            const result = this.chain.find(block => block.hash === hash);
+            if (result) {
+                resolve(result);
             } else {
                 reject("couldn't find the block");
             }
@@ -165,7 +163,7 @@ class Blockchain {
     getBlockByHeight(height) {
         let self = this;
         return new Promise((resolve, reject) => {
-            let block = self.chain.filter(p => p.height === height)[0];
+            let block = self.chain.find(p => p.height === height);
             if (block) {
                 resolve(block);
             } else {
@@ -215,11 +213,7 @@ class Blockchain {
                 }
             }
 
-            if (errorLog.length === 0) {
-                resolve("chain is valid");
-            } else {
-                reject(errorLog);
-            }
+            resolve(errorLog);
         });
     }
 
